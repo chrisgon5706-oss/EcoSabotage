@@ -1,0 +1,181 @@
+<div class="app">
+  <header class="barra">
+    <div class="marca">Eco<span>Sabotage</span><small>Barranquilla No Se Apaga</small></div>
+
+    @if (usuario) {
+      <div class="cuenta">
+        <div class="saldo" [class.sube]="gananciaPopup">
+          <span class="rayo">⚡</span>
+          <strong>{{ nf(usuario.hamons_saldo) }}</strong> Hamons
+          @if (gananciaPopup) { <em class="popup">+{{ gananciaPopup }}</em> }
+        </div>
+        <span class="chip" [class.auditor]="esAuditor">{{ usuario.username }}</span>
+        <button class="link" (click)="salir()">Salir</button>
+      </div>
+    }
+  </header>
+
+  @if (mensaje) { <div class="aviso" [class.error]="mensajeTipo === 'error'">{{ mensaje }}</div> }
+
+  @if (usuario && usuario.rol) {
+    <nav class="tabs">
+      <button [class.on]="vista==='juego'" (click)="irA('juego')">Tareas</button>
+      <button [class.on]="vista==='ruleta'" (click)="irA('ruleta')">Ruleta energética</button>
+      <button [class.on]="vista==='subasta'" (click)="irA('subasta')">Subasta</button>
+      <button [class.on]="vista==='impacto'" (click)="irA('impacto')">Impacto</button>
+    </nav>
+  }
+
+  <!-- ============ VISTA 1: LOBBY ============ -->
+  @if (vista === 'lobby') {
+    <main class="lobby">
+      @if (revelandoRol && usuario) {
+        <section class="revelacion" [class.auditor]="esAuditor">
+          <p>Tu rol en {{ usuario.empresa }}</p>
+          <h1>{{ esAuditor ? 'ERES EL AUDITOR' : 'ERES TRABAJADOR' }}</h1>
+          <p class="sub">{{ esAuditor ? 'Revisa las fotos-prueba. Un reporte válido te hace robar Hamons; uno falso te cuesta 100.' : 'Completa tareas de ahorro con foto real. Cuidado: el Auditor te vigila 15 minutos.' }}</p>
+        </section>
+      } @else if (!usuario) {
+        <section class="entrada">
+          <h1>Ahorra energía.<br>Cuídate del Auditor.</h1>
+          <p>Seis personas de OptimaTech, un impostor. Gana Hamons con tareas de ahorro, apuesta en la ruleta y puja por premios.</p>
+          <div class="campo">
+            <input [(ngModel)]="usuarioNombre" placeholder="Tu nombre de usuario" (keyup.enter)="unirse()" maxlength="30">
+            <button class="primario" (click)="unirse()">Entrar al lobby</button>
+          </div>
+          <p class="atajo">Demo rápida:
+            @for (n of ['ana','bruno','carla','diego','elena','felipe']; track n) {
+              <button class="link" (click)="elegir(n)">{{ n }}</button>
+            }
+          </p>
+        </section>
+      } @else {
+        <section class="entrada">
+          <h1>Jugadores: {{ lobby?.jugadores ?? 0 }}/{{ lobby?.total ?? 6 }}</h1>
+          <p>Esperando a que se complete el equipo. Los roles se asignan al azar cuando entra el sexto jugador.</p>
+          <div class="asientos">
+            @for (m of lobby?.miembros ?? []; track m.username) {
+              <div class="asiento" [class.listo]="m.unido"><span>{{ m.unido ? '●' : '○' }}</span>{{ m.username }}</div>
+            }
+          </div>
+          <button class="link" (click)="reiniciar()">Reiniciar partida (demo)</button>
+        </section>
+      }
+    </main>
+  }
+
+  <!-- ============ VISTA 2: DASHBOARD ============ -->
+  @if (vista === 'juego' && usuario) {
+    <main>
+      <div class="banner" [class.auditor]="esAuditor">
+        {{ esAuditor ? 'ERES EL AUDITOR' : 'ERES TRABAJADOR' }}
+      </div>
+
+      @if (!esAuditor) {
+        <section>
+          <div class="titulo-fila">
+            <h2>Tareas de ahorro</h2>
+            <label class="demo-check"><input type="checkbox" [(ngModel)]="simularFotoFalsa"> Simular foto falsa (demo)</label>
+          </div>
+          <div class="rejilla">
+            @for (t of tareas; track t.id) {
+              <article class="tarjeta">
+                <h3>{{ t.titulo }}</h3>
+                <p>{{ t.descripcion }}</p>
+                <p class="meta">{{ t.min_hamons }}–{{ t.max_hamons }} Hamons · {{ t.kwh_ahorro_estimado }} kWh</p>
+                <button class="primario" (click)="completar(t)">Completar tarea</button>
+              </article>
+            }
+          </div>
+        </section>
+      } @else {
+        <section>
+          <h2>Panel del Auditor</h2>
+          <p class="nota">Tareas de los últimos 15 minutos. Pasado ese tiempo quedan firmes.</p>
+          @if (historial.length === 0) { <p class="vacio">Aún no hay tareas por auditar. Espera a que los trabajadores suban fotos.</p> }
+          <div class="rejilla">
+            @for (h of historial; track h.id) {
+              <article class="tarjeta foto" [class.saboteada]="h.estado==='SABOTEADA'">
+                <img [src]="h.foto_prueba_url" alt="Foto-prueba de {{ h.trabajador }}" loading="lazy">
+                <div class="cuerpo">
+                  <h3>{{ h.tarea_titulo }}</h3>
+                  <p class="meta">{{ h.trabajador }} · {{ h.hamons_ganados }} Hamons</p>
+                  <div class="reloj" [class.urgente]="restante(h) < 120">{{ fmt(restante(h)) }}</div>
+                  @if (h.estado === 'PENDIENTE_AUDITORIA' && restante(h) > 0 && !h.reportada) {
+                    <button class="peligro" (click)="reportar(h)">Reportar falsedad</button>
+                  } @else {
+                    <span class="estado">{{ h.estado === 'SABOTEADA' ? 'Saboteada' : 'Verificada' }}</span>
+                  }
+                </div>
+              </article>
+            }
+          </div>
+        </section>
+      }
+    </main>
+  }
+
+  <!-- ============ VISTA 3: RULETA ============ -->
+  @if (vista === 'ruleta' && usuario) {
+    <main class="centro">
+      <h2>Casino de la Eficiencia</h2>
+      <p class="nota">Cada giro cuesta 50 Hamons. Multiplicadores: x0, x0.5, x1.5, x3 y jackpot x5.</p>
+      <div class="ruleta-wrap">
+        <div class="puntero"></div>
+        <div class="rueda" [style.transform]="'rotate(' + rotacion + 'deg)'">
+          @for (s of sectores; track s; let i = $index) {
+            <span class="sector" [style.transform]="'rotate(' + (i*72+36) + 'deg) translateY(-118px)'">x{{ s }}</span>
+          }
+        </div>
+      </div>
+      <button class="primario grande" [disabled]="girando" (click)="girar()">Girar ruleta (50 Hamons)</button>
+      @if (resultadoRuleta) {
+        <div class="resultado" [class.jackpot]="resultadoRuleta.jackpot" [class.pierde]="resultadoRuleta.multiplicador === 0">
+          <strong>{{ resultadoRuleta.jackpot ? 'JACKPOT x5' : 'x' + resultadoRuleta.multiplicador }}</strong>
+          <span>{{ resultadoRuleta.premio > 0 ? 'Recibes ' + resultadoRuleta.premio + ' Hamons' : 'Perdiste los 50 Hamons' }}</span>
+        </div>
+      }
+    </main>
+  }
+
+  <!-- ============ VISTA 4: SUBASTA ============ -->
+  @if (vista === 'subasta' && usuario) {
+    <main>
+      <h2>Subasta de premios</h2>
+      <p class="nota">Tus Hamons quedan retenidos mientras vas ganando; si te superan, vuelven a tu saldo.</p>
+      <div class="rejilla">
+        @for (p of premios; track p.id) {
+          <article class="tarjeta" [class.ganando]="p.ganador === usuario.username">
+            <h3>{{ p.titulo }}</h3>
+            <p class="puja">{{ p.puja_mas_alta ? nf(p.puja_mas_alta) : nf(p.costo_base_hamons) }} <small>Hamons</small></p>
+            <p class="meta">{{ p.ganador ? 'Va ganando ' + (p.ganador === usuario.username ? 'tú' : p.ganador) : 'Sin pujas todavía' }}</p>
+            <button class="primario" [disabled]="p.ganador === usuario.username" (click)="pujar(p)">
+              Pujar +50 Hamons ({{ nf(p.siguiente_puja) }})
+            </button>
+          </article>
+        }
+      </div>
+    </main>
+  }
+
+  <!-- ============ VISTA 5: IMPACTO ============ -->
+  @if (vista === 'impacto' && usuario) {
+    <main>
+      <h2>Impacto ambiental de {{ impacto?.empresa ?? 'tu empresa' }}</h2>
+      @if (impacto) {
+        <div class="metricas">
+          <div class="metrica"><strong>{{ nf(impacto.kwh_ahorrados) }}</strong><span>kWh ahorrados</span></div>
+          <div class="metrica"><strong>$ {{ nf(impacto.cop_ahorrados) }}</strong><span>COP ahorrados (estimado)</span></div>
+          <div class="metrica"><strong>{{ nf(impacto.co2_kg_evitados) }}</strong><span>kg de CO₂ evitados</span></div>
+          <div class="metrica"><strong>{{ impacto.arboles_equivalentes }}</strong><span>árboles al año equivalentes</span></div>
+        </div>
+        <p class="nota">{{ impacto.tareas_validas }} tareas válidas · {{ impacto.tareas_saboteadas }} saboteadas por el Auditor (no cuentan).</p>
+        <div class="ods">
+          <div><b>ODS 7</b> Energía asequible y no contaminante: menos consumo en horas de alta demanda por El Niño.</div>
+          <div><b>ODS 12</b> Producción y consumo responsables: hábitos medibles de ahorro dentro de la empresa.</div>
+        </div>
+        <p class="nota">{{ impacto.supuestos.nota }}</p>
+      } @else { <p class="vacio">Cargando métricas…</p> }
+    </main>
+  }
+</div>
